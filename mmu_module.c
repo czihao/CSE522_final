@@ -42,13 +42,14 @@ paging_vma_fault(struct vm_fault * vmf)
 #endif
 	struct page *page = NULL;
 	unsigned long offset;
-	u32 pgd_addr, pgd_val, pte_addr, new_pte_val;
+	u32 pgd_addr, pgd_val, pte_addr, new_pte_val, vma_start;
 	
 	//map physical page to vma stored in vm_private_data
 	offset = (unsigned long)(vmf->pgoff << PAGE_SHIFT);
 	page = virt_to_page(vmf->vma->vm_private_data + offset);
 	vmf->page = page;
 	get_page(page);
+	vma_start = vmf->vma->vm_start;
 	//calculate total page for vma
 	u32 total_pages = (vmf->vma->vm_end - vmf->vma->vm_start) / 0x1000;
 	u32 num_page = 0U;
@@ -56,11 +57,12 @@ paging_vma_fault(struct vm_fault * vmf)
 	if (num_fault == 1) {
 		//get first fault's address
 		asm("mrc p15, 0, %0, c6, c0, 0" : "=r" (fault_addr) ::);
-	} else if (num_fault >= 2) {
+	} 
+	else {
 		// get the first fault's values
 		asm("mrc p15, 0, %0, c2, c0, 0" : "=r" (pgd_addr) :: );
 		pgd_addr &= ~(0x3FFFU);
-		pgd_addr |= (u32)(((fault_addr >> 20) & 0xFFFU) << 2);
+		pgd_addr |= (((fault_addr >> 20) & 0xFFFU) << 2);
 		pgd_addr = phys_to_virt(pgd_addr);
 		
 		pgd_val = *(u32*)pgd_addr;
@@ -73,13 +75,13 @@ paging_vma_fault(struct vm_fault * vmf)
 		// get the page table addresses associated with the vma
 		asm("mrc p15, 0, %0, c2, c0, 0" : "=r" (pgd_addr) :: );
 		pgd_addr &= ~(0x3FFFU);
-		pgd_addr |= (u32)((((u32)vmf->vma->vm_start >> 20) & 0xFFFU) << 2);
+		pgd_addr |= (((vma_start >> 20) & 0xFFFU) << 2);
 		pgd_addr = phys_to_virt(pgd_addr);
 
 		pgd_val = *(u32*)pgd_addr;
 		pte_addr = pgd_val;
 		pte_addr &= ~(0x3FFU);
-		pte_addr |= ((((u32)vmf->vma->vm_start >> 12) & 0xFFU) << 2);
+		pte_addr |= (((vma_start >> 12) & 0xFFU) << 2);
 		pte_addr = phys_to_virt(pte_addr);
 
 		// update the pte content to point to larger memory region
